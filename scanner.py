@@ -47,19 +47,44 @@ class MegaBonkScanner:
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
-                    return json.load(f)
-        except:
-            pass
+                    regions = json.load(f)
+                    if regions:
+                        self.log(f"📄 Loaded {len(regions)} learned region(s) from config")
+                    return regions
+        except Exception as e:
+            self.log(f"⚠️ Failed to load config: {e}")
         return []
+    
+    def reload_config(self):
+        """Reload configuration from file"""
+        old_count = len(self.learned_regions) if self.learned_regions else 0
+        self.learned_regions = self.load_learned_regions()
+        new_count = len(self.learned_regions) if self.learned_regions else 0
+        
+        if new_count != old_count:
+            self.log(f"🔄 Config reloaded: {old_count} → {new_count} region(s)")
+        
+        return self.learned_regions
     
     def save_learned_regions(self, regions):
         """Save learned regions for future scans"""
         try:
+            # Only save if we have regions and they're different from current
+            if not regions:
+                return
+                
+            # Check if regions have actually changed
+            current_bases = set(r['base'] for r in (self.learned_regions or []))
+            new_bases = set(r['base'] for r in regions)
+            
+            if current_bases == new_bases:
+                return  # No changes to save
+                
             with open(self.config_file, 'w') as f:
-                json.dump(regions, f)
-            self.log(f"💾 Saved {len(regions)} region(s) for fast scanning")
-        except:
-            pass
+                json.dump(regions, f, indent=2)
+            self.log(f"💾 Updated config: saved {len(regions)} region(s)")
+        except Exception as e:
+            self.log(f"⚠️ Failed to save config: {e}")
     
     def get_nearby_regions(self, target_regions):
         """Get regions near the target regions for expanded quick scan"""
@@ -283,6 +308,10 @@ class MegaBonkScanner:
         
         try:
             # FAST PATH: Try learned regions + nearby regions
+            if use_learned:
+                # Re-read config to get latest learned regions
+                self.reload_config()
+                
             if use_learned and self.learned_regions:
                 scan_regions = self.get_nearby_regions(self.learned_regions)
                 self.log(f"⚡ Quick scan: {len(scan_regions)} region(s) (including nearby)")
