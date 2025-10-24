@@ -31,6 +31,9 @@ class MegaBonkScanner:
         self.config_file = "shop_scanner_config.json"
         self.learned_regions = self.load_learned_regions()
         
+        # Quick scan expansion: scan nearby regions too (in MB)
+        self.quick_scan_expansion = 2 * 1024 * 1024  # 2MB before and after
+        
     def log(self, message):
         if self.log_callback:
             self.log_callback(message)
@@ -57,6 +60,40 @@ class MegaBonkScanner:
             self.log(f"💾 Saved {len(regions)} region(s) for fast scanning")
         except:
             pass
+    
+    def get_nearby_regions(self, target_regions):
+        """Get regions near the target regions for expanded quick scan"""
+        if not target_regions:
+            return []
+        
+        # Get all available regions
+        all_regions = self.find_shop_regions()
+        nearby = []
+        
+        for target in target_regions:
+            target_start = target['base']
+            target_end = target['base'] + target['size']
+            
+            # Add the original region
+            nearby.append(target)
+            
+            # Find regions within expansion range
+            for region in all_regions:
+                region_start = region['base']
+                region_end = region['base'] + region['size']
+                
+                # Check if region is nearby (before or after target)
+                is_before = (region_end >= target_start - self.quick_scan_expansion and 
+                           region_end <= target_start)
+                is_after = (region_start <= target_end + self.quick_scan_expansion and 
+                          region_start >= target_end)
+                
+                if is_before or is_after:
+                    # Check if not already in list
+                    if not any(r['base'] == region['base'] for r in nearby):
+                        nearby.append(region)
+        
+        return nearby
     
     def read_pointer(self, address):
         if address in self.pointer_cache:
@@ -245,12 +282,12 @@ class MegaBonkScanner:
         regions_with_shops = []
         
         try:
-            # FAST PATH: Try learned regions first
+            # FAST PATH: Try learned regions + nearby regions
             if use_learned and self.learned_regions:
-                self.log(f"⚡ Using {len(self.learned_regions)} saved region(s)")
+                scan_regions = self.get_nearby_regions(self.learned_regions)
+                self.log(f"⚡ Quick scan: {len(scan_regions)} region(s) (including nearby)")
                 
-                shops_found = False
-                for idx, region_info in enumerate(self.learned_regions):
+                for idx, region_info in enumerate(scan_regions):
                     try:
                         # Verify region still exists
                         test_read = self.pm.read_bytes(region_info['base'], 8)
@@ -264,21 +301,33 @@ class MegaBonkScanner:
                         if region_shops:
                             shops.extend(region_shops)
                             found_addresses.update(region_shops)
-                            shops_found = True
+                            
+                            # Remember this region for next time
+                            if not any(r['base'] == region_info['base'] for r in regions_with_shops):
+                                regions_with_shops.append({
+                                    'base': region_info['base'],
+                                    'size': region_info['size']
+                                })
                         
-                        self.update_progress(idx + 1, len(self.learned_regions))
+                        self.update_progress(idx + 1, len(scan_regions))
                     except Exception as e:
-                        self.log(f"⚠️ Saved region 0x{region_info['base']:X} invalid: {e}")
+                        self.log(f"⚠️ Region 0x{region_info['base']:X} skipped: {str(e)[:30]}")
                 
-                if shops_found and shops:
-                    self.log(f"✅ Found {len(shops)} shop(s) in saved regions!")
+                if shops:
+                    # Update config with any new regions found
+                    if regions_with_shops:
+                        self.save_learned_regions(regions_with_shops)
+                        self.learned_regions = regions_with_shops
+                    
+                    self.log(f"✅ Quick scan found {len(shops)} shop(s)!")
                     return shops
                 else:
-                    self.log("⚠️ No shops in saved regions, doing full scan...")
+                    self.log("⚠️ No shops in quick scan area, try Full Scan")
+                    return shops
             
             # FULL SCAN: Search all regions
             all_regions = self.find_shop_regions()
-            self.log(f"📊 Scanning {len(all_regions)} memory regions...")
+            self.log(f"📊 Full scan: {len(all_regions)} memory regions...")
             self.update_progress(0, len(all_regions))
             
             for idx, region in enumerate(all_regions):
@@ -307,7 +356,7 @@ class MegaBonkScanner:
                 self.save_learned_regions(regions_with_shops)
                 self.learned_regions = regions_with_shops
             
-            self.log(f"✅ Scan complete! Found {len(shops)} shop(s)")
+            self.log(f"✅ Full scan complete! Found {len(shops)} shop(s)")
             
         except Exception as e:
             self.log(f"❌ Error: {e}")
