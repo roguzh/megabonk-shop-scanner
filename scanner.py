@@ -32,7 +32,7 @@ class MegaBonkScanner:
         self.learned_regions = self.load_learned_regions()
         
         # Quick scan expansion: scan nearby regions too (in MB)
-        self.quick_scan_expansion = 2 * 1024 * 1024  # 2MB before and after
+        self.quick_scan_expansion = 16 * 1024 * 1024  # 2MB before and after
         
     def log(self, message):
         if self.log_callback:
