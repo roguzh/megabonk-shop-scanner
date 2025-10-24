@@ -5,6 +5,9 @@ A memory scanner tool for MegaBonk that helps you view all available shop items 
 ![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
+## Demo
+https://youtu.be/S7HvskoCuJA
+
 ## 🎮 How to Use
 
 ### Download & Run (Recommended)
