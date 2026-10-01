@@ -2,5 +2,4 @@ __pycache__/*
 compile/*
 
 shop_scanner_config.json
-config.bat
 node_modules
